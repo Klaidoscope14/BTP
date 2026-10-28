@@ -1,0 +1,37 @@
+To: Prof. Samrat Mondal
+From: Chaitanya Saagar (Roll No: 2301CS77)
+Subject: B.Tech Project Proposal - Electric Vehicle Routing Problem (EVRP)
+
+================================================================================
+PROJECT TITLE: 
+Deep Reinforcement Learning for Electric Vehicle Routing under Dynamic Time-of-Use Energy Pricing
+================================================================================
+
+1. INTRODUCTION & BACKGROUND
+The transition to electric fleets presents a complex logistical challenge: the Electric Vehicle Routing Problem (EVRP). Traditional routing algorithms (VRP) are well-equipped to handle static distance and time constraints. However, EVs introduce highly non-linear constraints, particularly regarding charging times and battery depletion. Furthermore, modern electricity grids utilize dynamic, time-of-use pricing that fluctuates constantly based on grid load, a variable that traditional distance-centric solvers fail to capture in real-time.
+
+2. CORE PROBLEM STATEMENT
+Existing EVRP literature and classical solvers treat charging costs as a static penalty or focus strictly on distance minimization. In reality, failing to account for dynamic energy pricing leads to significantly higher operational costs. Fleet operators lack dynamic routing models capable of recalculating paths on the fly to exploit short-term energy price drops while still adhering to strict customer delivery time windows. 
+
+3. THE PROPOSED INNOVATION: THE "ARBITRAGE" ROUTER
+This project proposes a novel Deep Reinforcement Learning (DRL) framework that treats charging stations as fluctuating financial assets. By integrating short-horizon prediction models to forecast grid prices, the RL agent acts as an "arbitrageur" on the road. The agent will learn a policy to intelligently delay charging, re-sequence customer visits, or intentionally reroute to exploit forecasted short-horizon drops in electricity prices, minimizing total operational cost rather than just distance.
+
+4. METHODOLOGY & DRL INTEGRATION
+The system will be formulated as a Markov Decision Process (MDP) and solved utilizing a standard policy-gradient algorithm (e.g., Proximal Policy Optimization). The integration relies on two primary components:
+    
+    A. Short-Horizon Price Forecasting: Drawing on techniques used in quantitative return prediction, a lightweight time-series model (e.g., LSTM or Auto-regressive model) will generate a rolling forecast vector of electricity prices for all local charging stations over the next 1-2 hours.
+    
+    B. RL Environment (MDP Formulation):
+       * State Space (S_t): The agent observes the current vehicle location, battery State-of-Charge (SoC), unvisited customer nodes, remaining time windows, and the short-horizon forecasted price vector.
+       * Action Space (A_t): The agent outputs a probability distribution to select the next destination (a customer delivery node or a specific charging station).
+       * Reward Function (R_t): A composite function that heavily penalizes time-window violations and battery depletion, penalizes total distance traveled, and provides a significant positive reward for charging events executed during optimal, low-cost forecasted windows.
+
+5. KEY OBJECTIVES
+- Develop a custom Gymnasium environment simulating an EV routing network with dynamic time-of-use pricing.
+- Train an initial short-horizon time-series model on synthetic or historical grid pricing data.
+- Train a DRL agent (PPO/DQN) to navigate the environment, explicitly balancing distance constraints with pricing forecasts.
+- Benchmark the DRL agent's cost-efficiency against a standard greedy heuristic (e.g., routing to the nearest station when battery is low).
+
+6. EXPECTED DELIVERABLES
+- A fully functional Python codebase containing the custom environment, training loops, and pre-trained weights.
+- A final B.Tech project report detailing the MDP formulation, reward function tuning, and comparative cost-efficiency metrics.

@@ -1,0 +1,24 @@
+# Functionalities: Core Modules and Feature Specifications
+
+## 1. Synthetic Data Generator Module (`data_gen.py`)
+To ensure the solution is completely self-contained and free from external API latency, the system features a robust, deterministic data generation engine.
+*   **Euclidean Graph Generation:** Programmatically instantiates a 2D coordinate grid simulating a localized delivery zone. It dynamically places 1 central depot, N customer delivery nodes (with adjustable clustering perimeters), and M charging stations scattered strategically (e.g., at grid extremities to force deliberate rerouting).
+*   **Stochastic Market Simulator:** Generates the dynamic Time-of-Use (ToU) electricity pricing. It utilizes a baseline deterministic sine wave to emulate standard day/night grid load cycles, infused with parameterized Gaussian noise to simulate unpredictable market spikes or dips, forcing the agent to react to real-time volatility rather than memorizing a static price map.
+*   **Distance Matrix Pre-computation:** Automatically calculates and stores the Euclidean distance vector between all nodes (D_ij) upon initialization to severely reduce computational overhead during the RL training loop.
+
+## 2. Custom Gymnasium Environment (`evrp_env.py`)
+The core feature of the product is the custom Reinforcement Learning environment, fully compliant with the modern `gymnasium` API standards, allowing seamless integration with any standard RL library.
+*   **State Dictionary Management:** Handles the continuous updating of the multi-dimensional observation space, integrating the vehicle's telemetry (location, SoC, elapsed time), the pending delivery mask, and the short-horizon price forecast matrix into a single flat state vector for the neural network.
+*   **Action Execution & Masking:** Translates the discrete integer action from the RL agent into physical movement on the grid. Crucially, it features an internal action-masking mechanism that zeros out the probability of invalid actions (e.g., attempting to visit a customer that has already received their delivery), ensuring the agent learns efficiently without getting stuck in infinite loops.
+*   **Reward Formulation Engine:** The mathematical core that calculates the step reward (R_t). It continuously deducts the travel penalty, calculates the exact arbitrage gain during a charging event based on the current price vs. historical average, and instantly applies massive terminal penalties for SLA violations or complete battery depletion.
+
+## 3. RL Training Pipeline (`train.py`)
+A structured, reproducible training module designed to stabilize the notoriously volatile reinforcement learning process.
+*   **Policy Network Initialization:** Implements a Proximal Policy Optimization (PPO) agent via standard libraries (e.g., Stable Baselines3), configuring a Multi-Layer Perceptron (MLP) capable of processing the concatenated, multi-type state array.
+*   **Hyperparameter Logging & Checkpointing:** Automatically tracks episode returns, average episode lengths, and policy entropy during training using tools like TensorBoard. It periodically saves the model weights (`.zip` format) to allow for mid-training evaluation and prevents progress loss during long compute runs.
+
+## 4. Evaluation and Benchmarking Suite (`evaluate.py`)
+A comparative analytics feature to mathematically and visually prove the DRL agent's superiority over standard industry heuristics.
+*   **Deterministic Inference Mode:** Loads the final saved policy weights and runs the environment sequentially without action exploration, demonstrating the agent's ultimate converged routing strategy.
+*   **Baseline Heuristic Comparison:** Features a hard-coded classical routing algorithm (e.g., a greedy nearest-neighbor solver that only visits a charging station when SoC drops below 15%). The suite directly compares the total operational cost, time taken, and SLA compliance rate of the heuristic against the RL agent.
+*   **Route Visualization:** Generates a 2D matplotlib/seaborn plot overlaying the agent's chosen path onto the coordinate grid, visually highlighting where the agent chose to deviate from the shortest path to secure an energy arbitrage opportunity.
