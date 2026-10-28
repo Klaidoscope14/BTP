@@ -1,0 +1,41 @@
+# Solution Specification: The "Arbitrage" Router using Deep Reinforcement Learning (DRL)
+
+## 1. Project Overview & Architectural Paradigm
+The proposed solution abandons classical deterministic algorithms in favor of a Deep Reinforcement Learning (DRL) framework. By formulating the Electric Vehicle Routing Problem (EVRP) as a Markov Decision Process (MDP), the system trains an intelligent agent capable of spatial-temporal arbitrage. 
+
+The core innovation is the integration of a short-horizon time-series prediction module directly into the RL agent's observation space. This allows the neural network to identify rolling price trends and adjust its routing policy dynamically, intentionally delaying a charge or rerouting to exploit an incoming price drop, analogous to executing a market-making strategy in quantitative finance.
+
+## 2. The Synthetic Environment Design
+To maintain strict AI IDE compatibility and eliminate external API latency, the environment operates entirely in a synthetic 2D Euclidean space.
+
+*   Spatial Graph: A coordinate grid containing 1 Depot (fixed at the center), N=30 Customer Nodes (randomly distributed), and M=4 Charging Stations (strategically placed in quadrants). Distances are calculated using simple Euclidean metrics: D_ij = sqrt((x_j - x_i)^2 + (y_j - y_i)^2).
+*   Temporal Market Simulation: The grid price at each charging station is generated synthetically. It combines a deterministic sine wave (representing predictable daily grid load) with stochastic Gaussian noise. This simulates real-world volatility, preventing the agent from memorizing static price tables and forcing it to rely on the dynamic forecast vector.
+
+## 3. Mathematical MDP Formulation (Strict IDE Implementation Guide)
+The environment must be structured as a standard `gymnasium.Env`. The mathematical logic below must be strictly adhered to during implementation.
+
+### A. State Space Observation (S_t)
+The agent requires a multi-dimensional state vector at each decision step t. It is represented as a dictionary:
+*   `current_node` (Discrete): An integer x_t in [0, N+M] indicating the vehicle's current position.
+*   `battery_soc` (Continuous): A normalized float b_t in [0.0, 1.0] representing the State of Charge.
+*   `elapsed_time` (Continuous): A float tau_t tracking the cumulative simulation time.
+*   `unvisited_mask` (Multi-Binary): A boolean array of length N, where 1 indicates a pending delivery and 0 indicates a completed delivery. This is crucial for action-masking.
+*   `price_forecast` (Continuous Array): A 2D matrix of shape (M, K), where M is the number of stations and K is the look-ahead window size (e.g., K=5 timesteps). This rolling vector provides the predicted grid prices, enabling the arbitrage behavior.
+
+### B. Action Space (A_t)
+The action space must be discrete to maintain stability in early RL training.
+*   `next_destination` (Discrete): An integer a_t in [0, N+M] corresponding to the index of the next node. 
+*   Action Masking Requirement: The environment must internally intercept the agent's output probabilities. Invalid actions (selecting a customer node where `unvisited_mask[i] == 0`, or selecting the depot before all deliveries are complete) must be masked out by setting their probabilities to zero before executing `step()`.
+
+### C. The Reward Function (R_t)
+The reward function dictates the learning objective. It balances distance minimization with financial arbitrage. The step reward R_t is calculated as follows:
+
+1.  Distance Penalty (Continuous): A small negative scalar applied for every movement, calculated as -w_1 * D_{x_t, a_t}.
+2.  Arbitrage Reward (Sparse/Conditional): If a_t is a charging station, calculate the charging cost using the current price P_t. If P_t is below the station's moving average price P_avg (calculated via an exponential moving average alpha to prevent data-driven parameter tuning issues), assign a positive reward: +w_2 * (P_avg - P_t). 
+3.  Terminal Penalties (Massive Negative Scalars): 
+    *   If b_t <= 0.0 before reaching a node: R_t = -1000 (Terminate).
+    *   If tau_t > l_{a_t} (Late arrival violating a customer's time window): R_t = -1000 (Terminate).
+4.  Completion Bonus: If all N customers are visited and the vehicle returns to the depot successfully: R_t = +500.
+
+## 4. Policy Network Architecture
+The backend deep learning architecture utilizing Proximal Policy Optimization (PPO) should employ a Multi-Layer Perceptron (MLP) feature extractor. Given the disparate nature of the state inputs (binary masks, continuous scalars, and time-series arrays), the IDE should structure the network to flatten and concatenate these inputs before passing them through two dense hidden layers of sizes [256, 256] with ReLU activation.

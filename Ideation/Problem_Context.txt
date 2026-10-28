@@ -1,0 +1,34 @@
+# Context Specification: The Electric Vehicle Routing Problem (EVRP) with Dynamic Time-of-Use Pricing
+
+## 1. The Fundamental Domain: VRP vs. EVRP
+The Vehicle Routing Problem (VRP) is a classical combinatorial optimization challenge where the objective is to serve a set of customer nodes using a fleet of vehicles while minimizing total travel distance. 
+
+The transition to the Electric Vehicle Routing Problem (EVRP) introduces severe, non-linear constraints that invalidate traditional VRP solvers. In EVRP, the vehicle has a finite battery capacity (State of Charge - SoC). It cannot simply traverse the shortest path; it must periodically divert to fixed charging station nodes. Furthermore, the physics of charging are non-linear (e.g., charging from 10% to 80% is rapid, while 80% to 100% is slow), making the time spent at a station a complex variable, not a fixed constant.
+
+## 2. The Core Industry Bottleneck: Dynamic Pricing
+Existing EVRP literature and commercial logistics software primarily treat charging as a static geographical penalty. They assume electricity costs a flat rate. 
+
+In reality, modern smart grids employ Dynamic Time-of-Use (ToU) pricing. The cost per kilowatt-hour (kWh) fluctuates heavily based on real-time grid load. 
+
+**Concrete Example of the Bottleneck:**
+Assume an EV has 30% battery remaining. It is currently 10 km away from Customer A, and 12 km away from Charging Station 1. 
+- At T=0, the price at Station 1 is $0.25/kWh (peak load).
+- At T+30 minutes, the grid forecasts a price drop at Station 1 to $0.08/kWh (off-peak).
+- A classical algorithm will route the EV to the station immediately to minimize risk, paying the premium $0.25 rate.
+- An optimal "Arbitrage" routing policy would route the EV to deliver to Customer A first, burning battery down to 10%, and then navigate to the station right as the price drops to $0.08, saving significant operational expenditure (OPEX) without violating the delivery timeline.
+
+## 3. The Strict Constraints (Rules of the Environment)
+To solve this realistically, any agent operating in this environment must navigate the following hard constraints:
+- Hard Time Windows: Every customer node has an earliest arrival time and a latest arrival time [e_i, l_i]. Arriving too late violates the Service Level Agreement (SLA) and constitutes an episode failure.
+- Range Anxiety (Battery Depletion): The vehicle's SoC must strictly remain > 0.0. If the vehicle runs out of battery mid-transit between nodes, it is a catastrophic failure.
+- Partial vs. Full Charging: The agent must decide not just WHEN to charge, but HOW MUCH to charge. Sitting at a station to reach 100% might cause a time-window violation for the next customer.
+
+## 4. The Computational Failure of Classical AI
+Classical deterministic algorithms (such as Dijkstra's, A* Search, or Mixed Integer Linear Programming) fail in this specific environment for two reasons:
+1. Combinatorial Explosion: Factoring in partial charging amounts at various stations across a 30-node graph creates a search space too large for real-time calculation.
+2. Dynamic State Changes: Grid prices and traffic are stochastic. If a price suddenly spikes, a pre-calculated MILP route becomes obsolete instantly. Re-running a classical algorithm mid-route takes too much compute time.
+
+## 5. The Strategic Approach: Deep Reinforcement Learning
+Because mathematical solvers fail at real-time dynamic recalculation, we must frame this as a Markov Decision Process (MDP) and solve it heuristically using Deep Reinforcement Learning (DRL). 
+
+By embedding a short-horizon time-series price forecast into the RL agent's observation state, the neural network learns a policy to proactively anticipate price drops. The agent learns to map [Current Location, Remaining Battery, Unvisited Customers, Price Forecast Vector] directly to an optimal action probability distribution in milliseconds, functioning effectively as a spatial-temporal arbitrage algorithm.

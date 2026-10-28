@@ -1,0 +1,19 @@
+# Business Scope: Commercial Viability and Scaling Architecture
+
+## 1. Commercial Target Market
+The primary consumers of this solution are enterprise-scale Last-Mile Delivery (LMD) networks and specialized supply chains. Transitioning an internal combustion fleet to electric vehicles introduces massive capital expenditure. This solution directly targets the subsequent operational expenditure bottleneck by treating energy procurement as an active, dynamic strategy.
+*   **Target Sector:** E-commerce logistics operators and cold-chain distributors where energy draw is continuous and aggressive.
+*   **The Value Proposition:** Significantly reducing the daily cost of fleet energy consumption by programmatically forcing vehicles to charge during off-peak grid load hours, rather than whenever a battery simply hits an arbitrary low-percentage threshold.
+*   **Competitive Advantage:** Once the neural network is trained, it infers optimal routes in milliseconds, vastly outperforming the compute-heavy recalculation times of deterministic algorithms during sudden market or traffic shifts.
+
+## 2. Key Performance Indicators (KPIs)
+For the AI IDE and evaluating engineers to understand the success criteria of this environment, the reinforcement learning agent must optimize for strict business KPIs alongside abstract mathematical rewards.
+*   **Charge-Cost Arbitrage Spread:** The delta between the average local electricity price and the actual execution price the RL agent achieves.
+*   **SLA Compliance Rate:** The percentage of customer deliveries completed flawlessly within the predefined time windows.
+*   **Payload Shedding Efficiency:** Tracking the correlation between payload sequencing and energy savings to validate that heavier packages are delivered earlier in the route, mitigating non-linear battery drain.
+
+## 3. Real-World Deployment and Scaling
+Moving from a synthetic Minimum Viable Product to a production environment requires a highly scalable data architecture where static observations are replaced with live telemetry.
+*   **Live Market Integration:** Swapping the synthetic sine-wave pricing logic with live API telemetry from regional energy markets or dynamic tariff endpoints.
+*   **Spatio-Temporal Demand Forecasting:** Rather than relying on static customer nodes, production versions can integrate advanced spatio-temporal demand prediction models to proactively route vehicles toward areas with emerging high-density requests, optimizing both battery positioning and SLA compliance simultaneously.
+*   **Edge Computing Deployment:** The trained policy network is a lightweight Multi-Layer Perceptron. It can be containerized and deployed directly onto individual vehicle edge devices, enabling real-time routing inference without constant cloud connectivity.

@@ -1,0 +1,92 @@
+# Technical Stack and Architecture (Strict IDE Guidelines)
+
+## 1. System Requirements & Environment
+To ensure compatibility with the latest reinforcement learning libraries and prevent dependency conflicts, the virtual environment must be configured with the following specific versions:
+
+*   **Language:** Python 3.10, 3.11, 3.12, or 3.13. (Do not use Python 3.9 as support has been dropped). 
+*   **Deep Learning Backend:** PyTorch (torch >= 2.8). This is required for the latest security mitigations and performance stability.
+*   **RL Framework:** `stable-baselines3[extra]` (version >= 2.9.0). The `[extra]` flag is necessary as `pandas` and `matplotlib` are no longer core dependencies but are required for our data generation and plotting.
+*   **Environment API:** `gymnasium` (version >= 0.29.1, < 2.0). *Crucial Instruction for AI IDE:* Do not use the deprecated `gym` library; strictly use `gymnasium`.
+*   **Data Handling & Math:** `numpy` (for matrix operations) and `pandas` (for time-series manipulation).
+
+## 2. Directory Architecture
+The project must be modularized exactly as follows to ensure the training loop can easily import the custom environment without circular dependencies.
+
+/evrp_drl_arbitrage
+├── README.md                  # Project instructions and run commands
+├── requirements.txt           # Exact dependency pins
+├── main.py                    # Entry point for training/evaluation flags
+│
+├── envs/
+│   ├── init.py            # Registers the Gym environment
+│   └── evrp_env.py            # Contains the core EVRP_Env class (inherits gymnasium.Env)
+│
+├── utils/
+│   ├── init.py
+│   ├── data_generator.py      # Generates Euclidean graph and ToU synthetic pricing
+│   └── visualizer.py          # Renders route paths and state matrices via matplotlib
+│
+├── models/
+│   └── saved_weights/         # Directory for storing PPO .zip checkpoints
+│
+└── scripts/
+├── train_agent.py         # Initializes PPO and manages the learning loop
+└── evaluate_agent.py      # Runs deterministic evaluation and greedy baseline comparisons
+
+
+## 3. Class and Method Signatures
+The AI IDE must adhere to these exact class structures when scaffolding the Python files.
+
+### `utils/data_generator.py`
+```python
+class SyntheticEVRPData:
+    def __init__(self, num_customers=30, num_stations=4, grid_size=100.0):
+        # Initialize deterministic random seed
+        pass
+        
+    def generate_coordinates(self) -> dict:
+        # Returns dict with keys: 'depot', 'customers', 'stations' (each containing (x,y) tuples)
+        pass
+        
+    def generate_distance_matrix(self) -> np.ndarray:
+        # Returns pre-computed 2D array of Euclidean distances
+        pass
+        
+    def generate_price_forecast(self, current_time: float, lookahead: int) -> np.ndarray:
+        # Returns simulated price vector using sine wave + Gaussian noise
+        pass
+envs/evrp_env.py
+Python
+import gymnasium as gym
+from gymnasium import spaces
+import numpy as np
+
+class EVRP_Env(gym.Env):
+    metadata = {'render_modes': ['human', 'rgb_array']}
+
+    def __init__(self, data_generator, render_mode=None):
+        super(EVRP_Env, self).__init__()
+        # 1. Define self.observation_space using spaces.Dict
+        # 2. Define self.action_space using spaces.Discrete
+        
+    def reset(self, seed=None, options=None):
+        # 1. Reset vehicle location, battery, and time
+        # 2. Regenerate unvisited mask
+        # 3. Return initial observation and info dict
+        pass
+
+    def step(self, action: int):
+        # 1. Action masking check (penalize heavily if invalid)
+        # 2. Update physical state (distance traveled, battery consumed, time elapsed)
+        # 3. Calculate financial reward (distance penalty + arbitrage gain)
+        # 4. Check terminal states (SLA violation, battery <= 0, or all delivered)
+        # 5. Return (observation, reward, terminated, truncated, info)
+        pass
+4. Training Constraints (Stable Baselines3 Integration)
+When writing scripts/train_agent.py, the AI must instantiate the PPO algorithm using a custom multi-input policy, as our state is a dictionary.
+
+Policy Network: Must use "MultiInputPolicy" (not "MlpPolicy").
+
+Normalization: Use VecNormalize to stabilize the continuous components of the state vector (like elapsed time and battery percentage) before they are fed into the neural network.
+
+Callbacks: Implement a checkpoint callback to save the model every 10,000 timesteps to prevent loss of progress during local training.
