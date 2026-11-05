@@ -1,0 +1,5 @@
+__pycache__/
+outputs/
+models/saved_weights/ppo_evrp_*_steps.zip
+models/saved_weights/rl_model_vecnormalize_*.pkl
+models/saved_weights/*_vecnormalize_*_steps.pkl

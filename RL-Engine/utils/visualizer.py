@@ -41,9 +41,12 @@ def plot_route(
         ax.annotate(f"{seq_i+1}:{c.name}", (c.x, c.y), fontsize=6,
                     textcoords="offset points", xytext=(5, 5), fontweight="bold")
 
-    # stations
+    # stations (the ones the route charged at are drawn larger, in red)
+    used = set(path_nodes or [])
     for s in w.stations:
-        ax.scatter(s.x, s.y, marker="^", s=90, c="tab:green", zorder=4)
+        charged = s.index in used
+        ax.scatter(s.x, s.y, marker="^", s=170 if charged else 90,
+                   c="tab:red" if charged else "tab:green", zorder=4)
         ax.annotate(s.name, (s.x, s.y), fontsize=6,
                     textcoords="offset points", xytext=(4, 4))
 
