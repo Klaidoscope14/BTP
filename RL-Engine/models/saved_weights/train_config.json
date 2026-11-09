@@ -5,10 +5,34 @@
   "grid": 40.0,
   "min_visit": 4,
   "max_visit": 12,
+  "curriculum": null,
+  "stage_steps": null,
+  "charge_levels": 5,
+  "time_windows": "none",
+  "tw_slack": [
+    2.0,
+    24.0
+  ],
+  "tw_width": 24.0,
   "lookahead": 4,
-  "steps": 300000,
+  "steps": 2000000,
   "envs": 4,
+  "subproc": false,
   "seed": 42,
-  "save_dir": "models/saved_weights",
-  "num_stations": 6
+  "eval_freq": 25000,
+  "eval_episodes": 50,
+  "checkpoint_freq": 100000,
+  "save_dir": "models/experiments/partial_2m",
+  "threads": 1,
+  "num_stations": 6,
+  "stages": [
+    {
+      "name": "all",
+      "visit_range": [
+        4,
+        12
+      ],
+      "steps": 2000000
+    }
+  ]
 }

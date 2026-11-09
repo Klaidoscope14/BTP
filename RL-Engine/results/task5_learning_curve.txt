@@ -1,0 +1,12 @@
+
+always full (1M)
+  steps 25,000-1,007,616: first eval $36.12, best $24.28 at 850,000, last $25.48
+   mean cost by quarter: $29.67  $26.98  $25.50  $25.17
+   last quarter vs third quarter: +1.3% -> still improving
+
+partial (2M)
+  steps 25,000-2,007,040: first eval $36.92, best $21.50 at 875,000, last $22.19
+   mean cost by quarter: $24.25  $22.15  $22.02  $22.04
+   last quarter vs third quarter: -0.1% -> flat (converged)
+
+Saved results/task5_learning_curve.png

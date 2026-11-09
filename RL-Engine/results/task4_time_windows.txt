@@ -1,0 +1,35 @@
+### model: models/experiments/time_windows
+Environment: charge levels=5 (partial), time windows=generated, lookahead=4
+  Method                Avg Cost     Std  $/kWh Stops  Unused  Late Deaths Feasible     Gap  =Opt
+  ----------------------------------------------------------------------------------------------------
+  PPO Agent            $   30.93 $ 16.90  0.137  3.77    0.0k  0.00      0  100/100  25.25%    11
+  Optimal              $   23.82 $ 10.50  0.092  3.45    0.0k  0.00      0  100/100   0.00%   100
+  Charge When Forced   $   44.68 $ 25.06  0.234  2.20    0.0k  0.00      0  100/100  77.31%     7
+  Greedy Nearest       $   44.62 $ 24.94  0.235  2.21    0.0k  0.00      0  100/100  78.26%     7
+  Greedy Cheapest      $   37.70 $ 20.48  0.187  2.17    0.0k  0.00      0  100/100  53.39%    11
+  Smart Rule-Based     $   35.17 $ 19.59  0.169  2.34    0.0k  0.00      0  100/100  41.77%    11
+  Unused = kWh bought but still in the battery at the end (k = kWh). Gap = mean % above the optimal cost; =Opt = episodes matching it.
+### model: models/experiments/partial_2m
+Environment: charge levels=5 (partial), time windows=generated, lookahead=4
+  Method                Avg Cost     Std  $/kWh Stops  Unused  Late Deaths Feasible     Gap  =Opt
+  ----------------------------------------------------------------------------------------------------
+  PPO Agent            $   34.78 $ 17.85  0.165  4.15    0.0k  0.00      0  100/100  41.78%     5
+  Optimal              $   23.82 $ 10.50  0.092  3.45    0.0k  0.00      0  100/100   0.00%   100
+  Charge When Forced   $   44.68 $ 25.06  0.234  2.20    0.0k  0.00      0  100/100  77.31%     7
+  Greedy Nearest       $   44.62 $ 24.94  0.235  2.21    0.0k  0.00      0  100/100  78.26%     7
+  Greedy Cheapest      $   37.70 $ 20.48  0.187  2.17    0.0k  0.00      0  100/100  53.39%    11
+  Smart Rule-Based     $   35.17 $ 19.59  0.169  2.34    0.0k  0.00      0  100/100  41.77%    11
+  Unused = kWh bought but still in the battery at the end (k = kWh). Gap = mean % above the optimal cost; =Opt = episodes matching it.
+### user route with windows (examples/sample_map_tw.json)
+--- PPO Agent ---
+  Total cost: $26.29 (distance $10.06, charging $16.22, late $0.00 (0 customers), 4 charge stops, 0.0 kWh bought but unused)
+--- Optimal ---
+  Total cost: $19.49 (distance $9.86, charging $9.63, late $0.00 (0 customers), 2 charge stops, 0.0 kWh bought but unused)
+--- Charge When Forced ---
+  Total cost: $39.27 (distance $9.90, charging $29.37, late $0.00 (0 customers), 2 charge stops, 0.0 kWh bought but unused)
+--- Greedy Nearest ---
+  Total cost: $39.27 (distance $9.90, charging $29.37, late $0.00 (0 customers), 2 charge stops, 0.0 kWh bought but unused)
+--- Greedy Cheapest ---
+  Total cost: $39.27 (distance $9.90, charging $29.37, late $0.00 (0 customers), 2 charge stops, 0.0 kWh bought but unused)
+--- Smart Rule-Based ---
+  Total cost: $39.27 (distance $9.90, charging $29.37, late $0.00 (0 customers), 2 charge stops, 0.0 kWh bought but unused)

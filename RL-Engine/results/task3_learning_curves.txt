@@ -1,0 +1,18 @@
+
+curriculum
+  stage 5 steps 25,000-507,904: first eval $8.63, best $6.56 at 350,000, last $6.66
+   mean cost by quarter: $7.96  $6.87  $6.62  $6.64
+   last quarter vs third quarter: -0.3% -> flat (converged)
+  stage 15 steps 532,904-1,015,808: first eval $32.99, best $31.89 at 782,904, last $32.49
+   mean cost by quarter: $32.96  $32.36  $32.51  $32.47
+   last quarter vs third quarter: +0.1% -> flat (converged)
+  stage 30 steps 1,040,808-1,523,712: first eval $76.32, best $75.07 at 1,315,808, last $76.69
+   mean cost by quarter: $76.01  $76.40  $76.51  $76.02
+   last quarter vs third quarter: +0.6% -> flat (converged)
+
+no_curriculum
+  steps 25,000-1,507,328: first eval $143.22, best $74.23 at 850,000, last $76.56
+   mean cost by quarter: $88.72  $76.09  $75.82  $76.12
+   last quarter vs third quarter: -0.4% -> flat (converged)
+
+Saved results/task3_learning_curves.png
