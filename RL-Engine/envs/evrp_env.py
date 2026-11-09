@@ -3,23 +3,28 @@ Fixed-Order EVRP Gymnasium Environment
 =======================================
 The customer visit order is fixed (given by the user). The graph — node
 positions, distances and every station's 24-hour price schedule — is fully
-known. The agent's only decision at each step is whether to go directly to
-the next mandatory stop, or detour to one of M charging stations first
-(charge to full, then continue).
+known. At each leg the agent decides whether to drive straight to the next
+mandatory stop, or to detour through one of M charging stations and how
+much to charge there (partial charging, see envs/route.py).
 
-Action space: Discrete(M + 1)
-  0       = go directly to the next mandatory stop
-  1 .. M  = detour to station k, charge to full, then go to the next stop
+Action space: Discrete(1 + M * L)
+  0                 = go directly to the next mandatory stop
+  1 + k * L + l     = detour via station k, charge to level l (0 = least
+                      needed to stay feasible, L-1 = full / enough to finish)
+  With charge_levels=0 (legacy) L = 1 and every charge fills to 100 %.
 
-One step = one leg (current position -> next mandatory stop, optionally via a
-station). An episode has len(visit_order) + 1 steps: one per customer plus
-the return to the depot.
+One step = one leg. An episode has len(visit_order) + 1 steps.
 
-Reward = -(distance cost + charging cost) of the leg, i.e. the episode return
-is exactly  completion_bonus - total_cost  when the route is completed, so
-maximising reward is the same as minimising the cost reported by evaluate.py.
-Running out of battery ends the episode with a penalty larger than the cost
-of any feasible completion.
+Reward = -(distance cost + charging cost + lateness cost) of the leg, plus
+completion_bonus at the end, so the episode return is exactly
+completion_bonus - total_cost. Running out of battery ends the episode with
+a penalty larger than the cost of any feasible completion.
+
+Time windows (time_windows=...):
+  "none"       ignore any windows (default)
+  "map"        use the windows stored in the map (JSON "window" fields)
+  "generated"  every episode draws fresh windows the current visit order can
+               meet (see route.generate_time_windows) — used for training
 
 Where worlds come from (checked in this order on every reset):
   1. fixed_world + randomize_order=False -> exactly that map and order
@@ -34,18 +39,27 @@ Where worlds come from (checked in this order on every reset):
 
 from __future__ import annotations
 
+import math
 from typing import Optional, Sequence, Tuple
 
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
-from utils.world import World, generate_world, with_visit_order
+from envs import route as R
+from utils.world import World, generate_world, with_time_windows, with_visit_order
 
 # Random-map seeds are split so training never sees evaluation/test maps.
 TRAIN_SEED_RANGE = (0, 1_000_000)
-EVAL_SEED_START = 2_000_000    # EvalCallback during training
+EVAL_SEED_START = 2_000_000    # evaluation during training
 TEST_SEED_START = 3_000_000    # evaluate.py
+
+N_SCALARS = 11
+N_PER_STATION = 7              # + price_lookahead
+
+
+def obs_size(num_stations: int, price_lookahead: int) -> int:
+    return N_SCALARS + num_stations * (N_PER_STATION + price_lookahead)
 
 
 class EVRPEnv(gym.Env):
@@ -65,8 +79,14 @@ class EVRPEnv(gym.Env):
         visit_range: Optional[Tuple[int, int]] = None,
         world_seed_pool: Optional[Sequence[int]] = None,
         completion_bonus: float = 50.0,
+        charge_levels: int = 5,
+        time_windows: str = "none",
+        tw_slack: Tuple[float, float] = (2.0, 24.0),
+        tw_width: float = 24.0,
     ):
         super().__init__()
+        if time_windows not in ("none", "map", "generated"):
+            raise ValueError(f"time_windows must be none/map/generated, got {time_windows!r}")
 
         if fixed_world is not None:
             num_customers = fixed_world.num_customers
@@ -84,11 +104,15 @@ class EVRPEnv(gym.Env):
         self.world_seed_pool = list(world_seed_pool) if world_seed_pool else None
         self._pool_pos = 0
         self.completion_bonus = completion_bonus
+        self.charge_levels = int(charge_levels)
+        self.time_windows = time_windows
+        self.tw_slack = tuple(tw_slack)
+        self.tw_width = tw_width
 
-        M = self.num_stations
-        K = self.price_lookahead
-        self.action_space = spaces.Discrete(M + 1)
-        self.obs_dim = 7 + 4 * M + M * K
+        M, K = self.num_stations, self.price_lookahead
+        self.n_levels = max(1, self.charge_levels)
+        self.action_space = spaces.Discrete(1 + M * self.n_levels)
+        self.obs_dim = obs_size(M, K)
         self.observation_space = spaces.Box(
             low=0.0, high=1.0, shape=(self.obs_dim,), dtype=np.float32
         )
@@ -99,12 +123,17 @@ class EVRPEnv(gym.Env):
     # ------------------------------------------------------------------ #
     # World selection
     # ------------------------------------------------------------------ #
+    def set_visit_range(self, lo: int, hi: int) -> None:
+        """Change the route-length range sampled from the next reset on
+        (used by curriculum training)."""
+        self.visit_range = (int(lo), int(hi))
+
     def _sample_num_visit(self, n_total: int, rng=None) -> int:
         if self.visit_range is None:
             return min(self.num_visit, n_total)
         rng = rng if rng is not None else self.np_random
         lo, hi = self.visit_range
-        lo, hi = max(1, lo), min(hi, n_total)
+        lo, hi = max(1, min(lo, n_total)), min(hi, n_total)
         return int(rng.integers(lo, hi + 1))
 
     def _next_pool_seed(self) -> int:
@@ -112,62 +141,94 @@ class EVRPEnv(gym.Env):
         self._pool_pos += 1
         return s
 
-    def _next_world(self) -> World:
+    def _next_world(self) -> Tuple[World, np.random.Generator]:
+        """Returns the world and the rng used for anything else random in this
+        episode (time windows), so pooled episodes are fully repeatable."""
         if self.fixed_world is not None:
             if not self.randomize_order:
-                return self.fixed_world
-            # a pool makes the sampled orders repeatable (eval/test)
+                return self.fixed_world, self.np_random
             rng = (np.random.default_rng(self._next_pool_seed())
                    if self.world_seed_pool else self.np_random)
             n = self.fixed_world.num_customers
             k = self._sample_num_visit(n, rng)
             order = rng.permutation(n)[:k]
-            return with_visit_order(self.fixed_world, [int(i) for i in order])
+            return with_visit_order(self.fixed_world, [int(i) for i in order]), rng
 
         if self.world_seed_pool:
             world_seed = self._next_pool_seed()
+            rng = np.random.default_rng(world_seed)
         elif self.randomize_world:
             world_seed = int(self.np_random.integers(*TRAIN_SEED_RANGE))
+            rng = self.np_random
         else:
             if self.world is not None:
-                return self.world
+                return self.world, self.np_random
             world_seed = self.base_seed
+            rng = np.random.default_rng(world_seed)
 
         return generate_world(
             num_customers=self.num_customers,
             num_stations=self.num_stations,
             grid_size=self.grid_size,
-            num_visit=self._sample_num_visit(self.num_customers),
+            num_visit=self._sample_num_visit(self.num_customers, rng),
             seed=world_seed,
-        )
+        ), rng
 
     # ------------------------------------------------------------------ #
     # Reset
     # ------------------------------------------------------------------ #
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        self.world = self._next_world()
+        world, rng = self._next_world()
+        if self.time_windows == "none":
+            world = with_time_windows(world, None)
+        elif self.time_windows == "generated":
+            world = with_time_windows(world, R.generate_time_windows(
+                world, rng, self.tw_slack, self.tw_width, self.charge_levels))
+        self.world = world
 
-        w = self.world
-        self.current_node_idx = w.depot.index
-        self.battery = w.battery_capacity
-        self.time = w.start_time
-        self.leg_index = 0
+        self.ctx = R.build_context(world, self.charge_levels)
+        self.state = R.initial_state(self.ctx)
         self.total_distance = 0.0
         self.total_charge_cost = 0.0
         self.total_distance_cost = 0.0
         self.total_energy_charged = 0.0
+        self.total_late_cost = 0.0
+        self.total_late_hours = 0.0
+        self.num_late = 0
+        self.total_wait = 0.0
         self.done = False
         self.log = []
-        self.path = [w.depot.index]       # every node driven through, for plots
+        self.path = [world.depot.index]   # every node driven through, for plots
         self.charges = []                 # (station name, hour, price, kWh, $)
-
-        # mandatory stops: [cust_1, ..., cust_N, depot]
-        self.mandatory_sequence = (
-            [w.customers[i].index for i in w.visit_order] + [w.depot.index]
-        )
-        self.min_battery_on_arrival = self._compute_min_battery()
+        self.actions = []
+        self._mask_cache = None
         return self._get_obs(), {}
+
+    # Backwards-compatible views of the state ---------------------------
+    @property
+    def current_node_idx(self) -> int:
+        return self.state.node
+
+    @property
+    def battery(self) -> float:
+        return self.state.battery
+
+    @property
+    def time(self) -> float:
+        return self.state.time
+
+    @property
+    def leg_index(self) -> int:
+        return self.state.leg
+
+    @property
+    def mandatory_sequence(self):
+        return self.ctx.seq
+
+    @property
+    def min_battery_on_arrival(self):
+        return self.ctx.need
 
     # ------------------------------------------------------------------ #
     # Step
@@ -176,174 +237,124 @@ class EVRPEnv(gym.Env):
         assert not self.done, "Episode is done — call reset()"
         action = int(action)
         w = self.world
-        next_mandatory = self.mandatory_sequence[self.leg_index]
+        o = R.simulate(self.ctx, self.state, action)
+        self.actions.append(action)
+        self._mask_cache = None
 
-        if action == 0:
-            path = [(self.current_node_idx, next_mandatory)]
-        else:
-            station_global = w.station_global_index(action - 1)
-            path = [(self.current_node_idx, station_global),
-                    (station_global, next_mandatory)]
+        for frm, to, d, bat, t in o.segments:
+            self.path.append(to)
+            self.log.append(f"{w.all_nodes[frm].name} -> {w.all_nodes[to].name}: "
+                            f"{d:.1f}u, bat={bat:.1f}, t={t:.1f}h")
+            if o.charge is not None and w.all_nodes[to].kind == "station":
+                name, hour, price, kwh, cost = o.charge
+                self.log.append(f"  CHARGE {name}: +{kwh:.1f}kWh @${price:.3f} = "
+                                f"${cost:.2f} (to {o.target:.1f} kWh), "
+                                f"t={t + o.charge_time:.1f}h")
+        self.total_distance += o.distance
+        self.total_distance_cost += o.dist_cost
 
-        step_cost = 0.0
-        for from_idx, to_idx in path:
-            d = w.dist(from_idx, to_idx)
-            energy = w.energy_for_dist(d)
+        if not o.drivable:
+            frm, to, need, have = o.dead_at
+            self._record_charge(o)
+            self.log.append(f"DEAD: {w.all_nodes[frm].name} -> {w.all_nodes[to].name}, "
+                            f"need {need:.1f} kWh, have {have:.1f}")
+            self.done = True
+            reward = -(o.dist_cost + o.charge_cost) - self._death_penalty()
+            return self._get_obs(), reward, True, False, {"dead": True}
 
-            if energy > self.battery + 1e-6:
-                self.done = True
-                self.log.append(
-                    f"DEAD: {w.all_nodes[from_idx].name} -> "
-                    f"{w.all_nodes[to_idx].name}, need {energy:.1f} kWh, "
-                    f"have {self.battery:.1f}"
-                )
-                reward = -step_cost - self._death_penalty()
-                return self._get_obs(), reward, True, False, {"dead": True}
+        self._record_charge(o)
+        if o.wait > 0:
+            self.total_wait += o.wait
+            self.log.append(f"  WAIT {o.wait:.1f}h for the window to open")
+        if o.late_hours > 0:
+            self.num_late += 1
+            self.total_late_hours += o.late_hours
+            self.total_late_cost += o.late_cost
+            self.log.append(f"  LATE by {o.late_hours:.1f}h (+${o.late_cost:.2f})")
 
-            self.battery -= energy
-            self.time += d / w.speed
-            self.total_distance += d
-            dist_cost = d * w.distance_cost_per_unit
-            self.total_distance_cost += dist_cost
-            step_cost += dist_cost
-            self.path.append(to_idx)
-            self.log.append(
-                f"{w.all_nodes[from_idx].name} -> {w.all_nodes[to_idx].name}: "
-                f"{d:.1f}u, bat={self.battery:.1f}, t={self.time:.1f}h"
-            )
-
-            if w.all_nodes[to_idx].kind == "station":
-                s_local = w.station_local_index(to_idx)
-                price = w.price_at(s_local, self.time)
-                energy_charged = w.battery_capacity - self.battery
-                cost = price * energy_charged
-                self.charges.append((w.all_nodes[to_idx].name, self.time % 24,
-                                     price, energy_charged, cost))
-                self.battery = w.battery_capacity
-                self.time += w.charge_time(energy_charged)
-                self.total_charge_cost += cost
-                self.total_energy_charged += energy_charged
-                step_cost += cost
-                self.log.append(
-                    f"  CHARGE {w.all_nodes[to_idx].name}: "
-                    f"+{energy_charged:.1f}kWh @${price:.3f} = ${cost:.2f}, "
-                    f"t={self.time:.1f}h"
-                )
-
-            self.current_node_idx = to_idx
-
-        reward = -step_cost
+        self.state = o.next_state(self.state, self.ctx)
+        reward = -o.cost
         info = {}
-        self.leg_index += 1
-        terminated = self.leg_index >= len(self.mandatory_sequence)
+        terminated = self.state.leg >= self.ctx.n_legs
         if terminated:
             self.done = True
             reward += self.completion_bonus
             info.update(self.summary())
         return self._get_obs(), reward, terminated, False, info
 
+    def _record_charge(self, o: R.Outcome) -> None:
+        if o.charge is not None:
+            self.charges.append(o.charge)
+            self.total_charge_cost += o.charge_cost
+            self.total_energy_charged += o.charge[3]
+
     def summary(self) -> dict:
         w = self.world
         avg_paid = (self.total_charge_cost / self.total_energy_charged
                     if self.total_energy_charged > 0 else float("nan"))
+        # Energy bought but still in the battery at the end: the vehicle
+        # starts full for free, so only charge above that counts as wasted.
+        unused = max(0.0, min(self.state.battery, self.total_energy_charged))
         return {
-            "total_cost": self.total_distance_cost + self.total_charge_cost,
+            "total_cost": (self.total_distance_cost + self.total_charge_cost
+                           + self.total_late_cost),
             "total_distance": self.total_distance,
             "total_distance_cost": self.total_distance_cost,
             "total_charge_cost": self.total_charge_cost,
+            "total_late_cost": self.total_late_cost,
+            "late_customers": self.num_late,
+            "late_hours": self.total_late_hours,
+            "wait_hours": self.total_wait,
             "energy_charged": self.total_energy_charged,
+            "energy_unused": unused,
             "num_charges": len(self.charges),
             "avg_price_paid": avg_paid,
             "market_avg_price": w.avg_price(),
-            "finish_time": self.time,
+            "finish_time": self.state.time,
         }
 
     def _death_penalty(self) -> float:
         # Worse than the most expensive possible completion of the remaining
         # legs, so the agent can never "prefer" running out of battery.
         w = self.world
-        remaining = len(self.mandatory_sequence) - self.leg_index
-        return 100.0 + remaining * (w.battery_capacity * w.price_max
+        remaining = self.ctx.n_legs - self.state.leg
+        late = (w.late_penalty_fixed + w.late_penalty_per_hour * 1000.0
+                if self.ctx.has_windows else 0.0)
+        return 100.0 + remaining * (w.battery_capacity * w.price_max + late
                                     + 2 * w.distance_matrix.max() * w.distance_cost_per_unit)
 
     # ------------------------------------------------------------------ #
-    # Feasibility helpers
+    # Masks
     # ------------------------------------------------------------------ #
-    def _arrival_battery(self, node: int, battery: float, target: int,
-                         action: int) -> Optional[float]:
-        """Battery on arrival at `target` from `node` using `action`, or None
-        if the leg can't be driven."""
-        w = self.world
-        cap = w.battery_capacity
-        if action == 0:
-            e = w.energy_for_dist(w.dist(node, target))
-            return battery - e if e <= battery + 1e-6 else None
-        s = w.station_global_index(action - 1)
-        e1 = w.energy_for_dist(w.dist(node, s))
-        e2 = w.energy_for_dist(w.dist(s, target))
-        if e1 > battery + 1e-6 or e2 > cap + 1e-6:
-            return None
-        return cap - e2
-
-    def _compute_min_battery(self) -> list:
-        """need[j] = least battery the vehicle must have on arriving at
-        mandatory stop j to be able to finish the route (charging allowed).
-
-        Worked backwards from the depot. Because a station always charges to
-        full, from stop X (next stop Y) the route can be finished with
-        battery b iff
-            b >= e(X,Y) + need[Y]                       (go direct), or
-            b >= e(X,s) for a station s with
-                 capacity - e(s,Y) >= need[Y]           (detour via s).
-        """
-        w = self.world
-        cap = w.battery_capacity
-        seq = self.mandatory_sequence
-        need = [0.0] * len(seq)
-        for j in range(len(seq) - 2, -1, -1):
-            x, y = seq[j], seq[j + 1]
-            best = w.energy_for_dist(w.dist(x, y)) + need[j + 1]
-            for s in w.stations:
-                if cap - w.energy_for_dist(w.dist(s.index, y)) >= need[j + 1] - 1e-6:
-                    best = min(best, w.energy_for_dist(w.dist(x, s.index)))
-            need[j] = best if best <= cap + 1e-6 else float("inf")
-        return need
-
     def action_masks(self) -> np.ndarray:
-        """Valid actions (used by MaskablePPO and the baselines).
+        """Valid actions (used by MaskablePPO, the baselines and the solver).
+        See route.action_mask."""
+        if self._mask_cache is None:
+            self._mask_cache = R.action_mask(self.ctx, self.state)
+        return self._mask_cache.copy()
 
-        An action is valid only if the vehicle arrives at the next stop with
-        enough charge to still finish the whole route. Following the mask
-        therefore never runs the battery flat.
-        """
-        M = self.world.num_stations
-        mask = np.zeros(M + 1, dtype=bool)
-        if self.leg_index >= len(self.mandatory_sequence):
-            mask[0] = True
-            return mask
-
-        target = self.mandatory_sequence[self.leg_index]
-        need = self.min_battery_on_arrival[self.leg_index]
-        drivable = np.zeros(M + 1, dtype=bool)
-        for a in range(M + 1):
-            b = self._arrival_battery(self.current_node_idx, self.battery, target, a)
-            drivable[a] = b is not None
-            mask[a] = b is not None and b >= need - 1e-6
-
-        if mask.any():
-            return mask
-        if drivable.any():          # route already infeasible: allow anything drivable
-            return drivable
-        mask[0] = True              # stranded: let the episode end with the penalty
-        return mask
+    def simulate(self, action: int) -> R.Outcome:
+        """Preview an action without taking it."""
+        return R.simulate(self.ctx, self.state, int(action))
 
     # ------------------------------------------------------------------ #
     # Observation
     # ------------------------------------------------------------------ #
     def _get_obs(self) -> np.ndarray:
-        w = self.world
-        M = w.num_stations
-        K = self.price_lookahead
+        """Every value in [0, 1]; the size depends only on M and K, so one
+        model handles visit orders of any length.
+
+        scalars (11): battery SoC, progress, distance to next stop,
+          time of day, energy to finish (direct), shortfall, length of the
+          following leg, legs remaining, battery needed on arrival at the
+          next stop, time slack at the next stop (going direct, against
+          the deadline table), windows-active flag
+        per station (M each): price now, price on arrival, K future hourly
+          prices, detour distance, any valid action, least kWh to buy,
+          most useful kWh to buy, time slack if detouring via the station
+        """
+        w, ctx, s = self.world, self.ctx, self.state
+        M, K = w.num_stations, self.price_lookahead
         cap = w.battery_capacity
         max_dist = float(w.distance_matrix.max()) + 1e-6
         p_span = w.price_max - w.price_min + 1e-6
@@ -351,55 +362,67 @@ class EVRPEnv(gym.Env):
         def pnorm(p):
             return (p - w.price_min) / p_span
 
-        seq = self.mandatory_sequence
-        has_next = self.leg_index < len(seq)
-        next_idx = seq[self.leg_index] if has_next else self.current_node_idx
+        def slack_norm(sl):          # hours of slack -> [0, 1]; 0.5 = on time
+            if not math.isfinite(sl):
+                return 1.0 if sl > 0 else 0.0
+            return 0.5 + 0.5 * math.tanh(sl / 24.0)
 
-        battery_soc = self.battery / cap
-        progress = self.leg_index / len(seq)
-        dist_to_next = w.dist(self.current_node_idx, next_idx)
-        time_norm = (self.time % 24.0) / 24.0
+        has_next = s.leg < ctx.n_legs
+        nxt = ctx.seq[s.leg] if has_next else s.node
+        dist_next = w.dist(s.node, nxt)
+        rem = (w.energy_for_dist(dist_next) + ctx.e_direct[s.leg]) if has_next else 0.0
+        shortfall = max(0.0, rem - s.battery)
+        following = (w.dist(nxt, ctx.seq[s.leg + 1])
+                     if s.leg + 1 < ctx.n_legs else 0.0)
+        legs_left = ctx.n_legs - s.leg
+        need_next = ctx.need[s.leg] if has_next else 0.0
+        b_direct = s.battery - w.energy_for_dist(dist_next)
+        slack_direct = (R.latest_arrival(ctx, s.leg, b_direct)
+                        - (s.time + dist_next / w.speed)) if has_next else math.inf
 
-        # energy to finish the whole remaining route without detours
-        remaining = [self.current_node_idx] + seq[self.leg_index:]
-        rem_energy = sum(w.energy_for_dist(w.dist(a, b))
-                         for a, b in zip(remaining, remaining[1:]))
-        shortfall = max(0.0, rem_energy - self.battery)
-        following = (w.dist(next_idx, seq[self.leg_index + 1])
-                     if self.leg_index + 1 < len(seq) else 0.0)
+        scalars = [
+            s.battery / cap,
+            s.leg / ctx.n_legs,
+            dist_next / max_dist,
+            (s.time % 24.0) / 24.0,
+            rem / (rem + cap),
+            min(shortfall, 3 * cap) / (3 * cap),
+            following / max_dist,
+            legs_left / (legs_left + 5.0),
+            min(need_next, cap) / cap,
+            slack_norm(slack_direct) if ctx.has_windows else 1.0,
+            1.0 if ctx.has_windows else 0.0,
+        ]
 
-        current_prices = np.zeros(M, dtype=np.float32)
-        arrival_prices = np.zeros(M, dtype=np.float32)
-        future_prices = np.zeros(M * K, dtype=np.float32)
-        detour_dists = np.zeros(M, dtype=np.float32)
-        for s in range(M):
-            s_global = w.station_global_index(s)
-            d_to_s = w.dist(self.current_node_idx, s_global)
-            current_prices[s] = pnorm(w.price_at(s, self.time))
-            arrival_prices[s] = pnorm(w.price_at(s, self.time + d_to_s / w.speed))
-            for k in range(K):
-                future_prices[s * K + k] = pnorm(w.price_at(s, self.time + k + 1))
-            if has_next:
-                detour = d_to_s + w.dist(s_global, next_idx) - dist_to_next
-                detour_dists[s] = detour / max_dist
+        mask = self.action_masks() if has_next else np.zeros(1 + M * self.n_levels, bool)
+        per = np.zeros((M, N_PER_STATION + K), dtype=np.float32)
+        for k in range(M):
+            g = w.station_global_index(k)
+            d_to = w.dist(s.node, g)
+            t_arr = s.time + d_to / w.speed
+            per[k, 0] = pnorm(w.price_at(k, s.time))
+            per[k, 1] = pnorm(w.price_at(k, t_arr))
+            for h in range(K):
+                per[k, 2 + h] = pnorm(w.price_at(k, s.time + h + 1))
+            if not has_next:
+                continue
+            base = 2 + K
+            per[k, base] = (d_to + w.dist(g, nxt) - dist_next) / max_dist
+            lv = slice(1 + k * self.n_levels, 1 + (k + 1) * self.n_levels)
+            per[k, base + 1] = float(mask[lv].any())
+            b_arr = s.battery - w.energy_for_dist(d_to)
+            lo, hi = R.charge_bounds(ctx, s.leg, k)
+            if self.charge_levels == 0:
+                lo = hi = cap
+            per[k, base + 2] = max(0.0, lo - b_arr) / cap
+            per[k, base + 3] = max(0.0, hi - b_arr) / cap
+            if ctx.has_windows:
+                # slack after the top-level charge at this station
+                o = R.simulate(ctx, s, R.encode(ctx, k, self.n_levels - 1))
+                per[k, base + 4] = (slack_norm(R.latest_arrival(ctx, s.leg, o.arrive_battery)
+                                               - o.arrive_time) if o.drivable else 0.0)
+            else:
+                per[k, base + 4] = 1.0
 
-        reachable = (self.action_masks()[1:].astype(np.float32)
-                     if has_next else np.zeros(M, dtype=np.float32))
-
-        obs = np.concatenate([
-            np.array([
-                battery_soc,
-                progress,
-                dist_to_next / max_dist,
-                time_norm,
-                rem_energy / (3.0 * cap),
-                shortfall / cap,
-                following / max_dist,
-            ], dtype=np.float32),
-            current_prices,
-            arrival_prices,
-            future_prices,
-            detour_dists,
-            reachable,
-        ])
+        obs = np.concatenate([np.asarray(scalars, dtype=np.float32), per.ravel()])
         return np.clip(obs, 0.0, 1.0).astype(np.float32)

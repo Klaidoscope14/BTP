@@ -17,7 +17,8 @@ JSON format accepted by load_world / world_from_dict:
 
     {
       "depot":     {"name": "Depot", "x": 0, "y": 0},
-      "customers": [{"name": "C01", "x": 12.5, "y": -3.0}, ...],
+      "customers": [{"name": "C01", "x": 12.5, "y": -3.0,
+                     "window": [0, 40]}, ...],              # optional
       "stations":  [{"name": "S1", "x": 20, "y": 5,
                      "prices": [24 hourly $/kWh values]}, ...],
       "visit_order": ["C07", "C02", "C11"],      # names (or 0-based indices)
@@ -25,6 +26,11 @@ JSON format accepted by load_world / world_from_dict:
                                                  #   that have no "prices"
       "params": {"battery_capacity": 100, ...}   # optional, see WORLD_PARAMS
     }
+
+"window" is an optional delivery time window [earliest, latest] in hours
+after the vehicle leaves the depot (either end may be null). Arriving before
+`earliest` means waiting; arriving after `latest` is late. Customers without
+a window can be reached at any time.
 """
 
 from __future__ import annotations
@@ -46,6 +52,8 @@ WORLD_PARAMS = {
     "speed": 1.5,                    # distance units per hour
     "distance_cost_per_unit": 0.03,  # $ per distance unit (wear and tear)
     "start_time": 6.0,               # hour of day the vehicle leaves the depot
+    "late_penalty_per_hour": 5.0,    # $ per hour a customer is reached late
+    "late_penalty_fixed": 10.0,      # $ per customer reached late
 }
 DEFAULT_PRICE_MIN = 0.06
 DEFAULT_PRICE_MAX = 0.40
@@ -69,6 +77,9 @@ class World:
     distance_matrix: np.ndarray       # shape (total_nodes, total_nodes)
     price_schedule: np.ndarray        # shape (num_stations, 24)
     all_nodes: List[Node] = field(default_factory=list)
+    # (num_customers, 2) [earliest, latest] in hours after departure, or None.
+    # Missing ends are -inf / +inf.
+    time_windows: Optional[np.ndarray] = None
 
     battery_capacity: float = WORLD_PARAMS["battery_capacity"]
     consumption_per_dist: float = WORLD_PARAMS["consumption_per_dist"]
@@ -76,6 +87,8 @@ class World:
     speed: float = WORLD_PARAMS["speed"]
     distance_cost_per_unit: float = WORLD_PARAMS["distance_cost_per_unit"]
     start_time: float = WORLD_PARAMS["start_time"]
+    late_penalty_per_hour: float = WORLD_PARAMS["late_penalty_per_hour"]
+    late_penalty_fixed: float = WORLD_PARAMS["late_penalty_fixed"]
     price_min: float = DEFAULT_PRICE_MIN
     price_max: float = DEFAULT_PRICE_MAX
 
@@ -120,6 +133,18 @@ class World:
     def avg_price(self) -> float:
         return float(self.price_schedule.mean())
 
+    @property
+    def has_time_windows(self) -> bool:
+        return self.time_windows is not None and bool(
+            np.isfinite(self.time_windows).any())
+
+    def window(self, customer_local: int):
+        """(earliest, latest) in hours after departure; (-inf, inf) if none."""
+        if self.time_windows is None:
+            return -math.inf, math.inf
+        lo, hi = self.time_windows[customer_local]
+        return float(lo), float(hi)
+
     def validate(self) -> None:
         """Raise ValueError if some leg can't be driven even on a full battery
         and with the best possible station detour."""
@@ -146,7 +171,7 @@ class World:
 # ──────────────────────────────────────────────────────────────────────────
 
 def _build_world(depot, customers, stations, visit_order, price_schedule,
-                 params: Optional[dict] = None) -> World:
+                 params: Optional[dict] = None, time_windows=None) -> World:
     all_nodes = [depot] + customers + stations
     for i, node in enumerate(all_nodes):
         node.index = i
@@ -167,10 +192,13 @@ def _build_world(depot, customers, stations, visit_order, price_schedule,
         p.update({k: float(v) for k, v in params.items()})
 
     price_schedule = np.asarray(price_schedule, dtype=np.float32)
+    if time_windows is not None:
+        time_windows = np.asarray(time_windows, dtype=np.float64)
     return World(
         depot=depot, customers=customers, stations=stations,
         visit_order=list(visit_order), distance_matrix=dist_mat,
         price_schedule=price_schedule, all_nodes=all_nodes,
+        time_windows=time_windows,
         price_min=min(DEFAULT_PRICE_MIN, float(price_schedule.min())),
         price_max=max(DEFAULT_PRICE_MAX, float(price_schedule.max())),
         **p,
@@ -251,6 +279,28 @@ def with_visit_order(world: World, order: Sequence[Union[str, int]]) -> World:
     return w
 
 
+def with_time_windows(world: World, windows: Optional[np.ndarray]) -> World:
+    """Same map and order, different time windows (None removes them)."""
+    if windows is not None:
+        windows = np.asarray(windows, dtype=np.float64)
+        if windows.shape != (world.num_customers, 2):
+            raise ValueError(f"time windows need shape ({world.num_customers}, 2), "
+                             f"got {windows.shape}")
+    return replace(world, time_windows=windows)
+
+
+def _parse_window(spec, name: str):
+    if spec is None:
+        return -math.inf, math.inf
+    if not isinstance(spec, (list, tuple)) or len(spec) != 2:
+        raise ValueError(f"Customer {name}: 'window' must be [earliest, latest]")
+    lo = -math.inf if spec[0] is None else float(spec[0])
+    hi = math.inf if spec[1] is None else float(spec[1])
+    if lo > hi:
+        raise ValueError(f"Customer {name}: window earliest {lo} > latest {hi}")
+    return lo, hi
+
+
 def world_from_dict(spec: dict, visit_order: Optional[Sequence] = None) -> World:
     """Build a World from a user spec (see module docstring for the format)."""
     def node(d, kind, default_name):
@@ -280,7 +330,13 @@ def world_from_dict(spec: dict, visit_order: Optional[Sequence] = None) -> World
         "visit_order", [c.name for c in customers])
     order = _resolve_order(customers, order_spec)
 
-    w = _build_world(depot, customers, stations, order, prices, spec.get("params"))
+    windows = None
+    if any("window" in c for c in spec["customers"]):
+        windows = [_parse_window(c.get("window"), customers[i].name)
+                   for i, c in enumerate(spec["customers"])]
+
+    w = _build_world(depot, customers, stations, order, prices, spec.get("params"),
+                     time_windows=windows)
     w.validate()
     return w
 
@@ -291,9 +347,18 @@ def load_world(path: str, visit_order: Optional[Sequence] = None) -> World:
 
 
 def world_to_dict(world: World) -> dict:
+    def cust(i, c):
+        d = {"name": c.name, "x": c.x, "y": c.y}
+        if world.time_windows is not None:
+            lo, hi = world.window(i)
+            if math.isfinite(lo) or math.isfinite(hi):
+                d["window"] = [round(lo, 2) if math.isfinite(lo) else None,
+                               round(hi, 2) if math.isfinite(hi) else None]
+        return d
+
     return {
         "depot": {"name": world.depot.name, "x": world.depot.x, "y": world.depot.y},
-        "customers": [{"name": c.name, "x": c.x, "y": c.y} for c in world.customers],
+        "customers": [cust(i, c) for i, c in enumerate(world.customers)],
         "stations": [{"name": s.name, "x": s.x, "y": s.y,
                       "prices": [round(float(p), 3) for p in world.price_schedule[i]]}
                      for i, s in enumerate(world.stations)],
