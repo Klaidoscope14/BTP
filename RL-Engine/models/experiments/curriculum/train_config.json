@@ -1,0 +1,54 @@
+{
+  "map": "examples/large_map.json",
+  "nc": 10,
+  "ns": 6,
+  "grid": 40.0,
+  "min_visit": null,
+  "max_visit": null,
+  "curriculum": "5,15,30",
+  "stage_steps": null,
+  "charge_levels": 5,
+  "time_windows": "none",
+  "tw_slack": [
+    2.0,
+    24.0
+  ],
+  "tw_width": 24.0,
+  "lookahead": 4,
+  "steps": 1500000,
+  "envs": 4,
+  "subproc": false,
+  "seed": 42,
+  "eval_freq": 25000,
+  "eval_episodes": 50,
+  "checkpoint_freq": 100000,
+  "save_dir": "models/experiments/curriculum",
+  "threads": 1,
+  "num_stations": 6,
+  "stages": [
+    {
+      "name": "5",
+      "visit_range": [
+        2,
+        5
+      ],
+      "steps": 500000
+    },
+    {
+      "name": "15",
+      "visit_range": [
+        5,
+        15
+      ],
+      "steps": 500000
+    },
+    {
+      "name": "30",
+      "visit_range": [
+        10,
+        30
+      ],
+      "steps": 500000
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+Training MaskablePPO on map examples/large_map.json, 6 stations, charge levels=5, time windows=none, 1500000 steps
+  stage 5: routes of 2-5 customers, 500000 steps
+  stage 15: routes of 5-15 customers, 500000 steps
+  stage 30: routes of 10-30 customers, 500000 steps
+
+=== Stage 5: routes of 2-5 customers, 500000 steps ===
+[eval] stage 5 step 25000: mean cost $8.63 ± 7.38, deaths 0, late 0.00  (new best)
+[eval] stage 5 step 50000: mean cost $8.19 ± 6.84, deaths 0, late 0.00  (new best)
+[eval] stage 5 step 75000: mean cost $7.78 ± 6.46, deaths 0, late 0.00  (new best)
+[eval] stage 5 step 100000: mean cost $7.86 ± 6.76, deaths 0, late 0.00
+[eval] stage 5 step 125000: mean cost $7.32 ± 5.77, deaths 0, late 0.00  (new best)
+[eval] stage 5 step 150000: mean cost $7.00 ± 5.29, deaths 0, late 0.00  (new best)
+[eval] stage 5 step 175000: mean cost $7.00 ± 5.33, deaths 0, late 0.00
+[eval] stage 5 step 200000: mean cost $6.80 ± 5.00, deaths 0, late 0.00  (new best)
+[eval] stage 5 step 225000: mean cost $6.74 ± 4.91, deaths 0, late 0.00  (new best)
+[eval] stage 5 step 250000: mean cost $6.79 ± 4.99, deaths 0, late 0.00
+[eval] stage 5 step 275000: mean cost $6.65 ± 4.62, deaths 0, late 0.00  (new best)
+[eval] stage 5 step 300000: mean cost $6.60 ± 4.62, deaths 0, late 0.00  (new best)
+[eval] stage 5 step 325000: mean cost $6.63 ± 4.64, deaths 0, late 0.00
+[eval] stage 5 step 350000: mean cost $6.56 ± 4.59, deaths 0, late 0.00  (new best)
+[eval] stage 5 step 375000: mean cost $6.64 ± 4.67, deaths 0, late 0.00
+[eval] stage 5 step 400000: mean cost $6.58 ± 4.58, deaths 0, late 0.00
+[eval] stage 5 step 425000: mean cost $6.65 ± 4.60, deaths 0, late 0.00
+[eval] stage 5 step 450000: mean cost $6.67 ± 4.67, deaths 0, late 0.00
+[eval] stage 5 step 475000: mean cost $6.63 ± 4.67, deaths 0, late 0.00
+[eval] stage 5 step 500000: mean cost $6.66 ± 4.68, deaths 0, late 0.00
+[eval] stage 5 step 507904: mean cost $6.66 ± 4.70, deaths 0, late 0.00
+
+=== Stage 15: routes of 5-15 customers, 500000 steps ===
+[eval] stage 15 step 532904: mean cost $32.99 ± 17.76, deaths 0, late 0.00  (new best)
+[eval] stage 15 step 557904: mean cost $33.25 ± 18.03, deaths 0, late 0.00
+[eval] stage 15 step 582904: mean cost $33.21 ± 18.22, deaths 0, late 0.00
+[eval] stage 15 step 607904: mean cost $33.08 ± 17.71, deaths 0, late 0.00
+[eval] stage 15 step 632904: mean cost $32.28 ± 16.75, deaths 0, late 0.00  (new best)
+[eval] stage 15 step 657904: mean cost $32.56 ± 17.16, deaths 0, late 0.00
+[eval] stage 15 step 682904: mean cost $32.18 ± 16.47, deaths 0, late 0.00  (new best)
+[eval] stage 15 step 707904: mean cost $32.54 ± 16.70, deaths 0, late 0.00
+[eval] stage 15 step 732904: mean cost $32.35 ± 16.66, deaths 0, late 0.00
+[eval] stage 15 step 757904: mean cost $32.18 ± 16.68, deaths 0, late 0.00
+[eval] stage 15 step 782904: mean cost $31.89 ± 16.13, deaths 0, late 0.00  (new best)
+[eval] stage 15 step 807904: mean cost $32.43 ± 16.35, deaths 0, late 0.00
+[eval] stage 15 step 832904: mean cost $32.84 ± 16.44, deaths 0, late 0.00
+[eval] stage 15 step 857904: mean cost $32.43 ± 15.76, deaths 0, late 0.00
+[eval] stage 15 step 882904: mean cost $32.95 ± 16.69, deaths 0, late 0.00
+[eval] stage 15 step 907904: mean cost $32.45 ± 16.43, deaths 0, late 0.00
+[eval] stage 15 step 932904: mean cost $32.09 ± 15.67, deaths 0, late 0.00
+[eval] stage 15 step 957904: mean cost $32.61 ± 15.96, deaths 0, late 0.00
+[eval] stage 15 step 982904: mean cost $33.04 ± 16.97, deaths 0, late 0.00
+[eval] stage 15 step 1007904: mean cost $32.15 ± 16.13, deaths 0, late 0.00
+[eval] stage 15 step 1015808: mean cost $32.49 ± 16.23, deaths 0, late 0.00
+
+=== Stage 30: routes of 10-30 customers, 500000 steps ===
+[eval] stage 30 step 1040808: mean cost $76.32 ± 31.66, deaths 0, late 0.00  (new best)
+[eval] stage 30 step 1065808: mean cost $77.07 ± 32.52, deaths 0, late 0.00
+[eval] stage 30 step 1090808: mean cost $75.60 ± 31.00, deaths 0, late 0.00  (new best)
+[eval] stage 30 step 1115808: mean cost $75.71 ± 30.95, deaths 0, late 0.00
+[eval] stage 30 step 1140808: mean cost $75.33 ± 29.78, deaths 0, late 0.00  (new best)
+[eval] stage 30 step 1165808: mean cost $76.19 ± 31.99, deaths 0, late 0.00
+[eval] stage 30 step 1190808: mean cost $76.30 ± 31.16, deaths 0, late 0.00
+[eval] stage 30 step 1215808: mean cost $76.20 ± 29.39, deaths 0, late 0.00
+[eval] stage 30 step 1240808: mean cost $76.57 ± 29.56, deaths 0, late 0.00
+[eval] stage 30 step 1265808: mean cost $76.76 ± 31.90, deaths 0, late 0.00
+[eval] stage 30 step 1290808: mean cost $78.58 ± 32.33, deaths 0, late 0.00
+[eval] stage 30 step 1315808: mean cost $75.07 ± 31.54, deaths 0, late 0.00  (new best)
+[eval] stage 30 step 1340808: mean cost $76.75 ± 33.32, deaths 0, late 0.00
+[eval] stage 30 step 1365808: mean cost $76.73 ± 31.60, deaths 0, late 0.00
+[eval] stage 30 step 1390808: mean cost $75.40 ± 30.97, deaths 0, late 0.00
+[eval] stage 30 step 1415808: mean cost $75.73 ± 30.49, deaths 0, late 0.00
+[eval] stage 30 step 1440808: mean cost $75.78 ± 31.07, deaths 0, late 0.00
+[eval] stage 30 step 1465808: mean cost $76.33 ± 30.92, deaths 0, late 0.00
+[eval] stage 30 step 1490808: mean cost $75.35 ± 31.39, deaths 0, late 0.00
+[eval] stage 30 step 1515808: mean cost $76.24 ± 30.22, deaths 0, late 0.00
+[eval] stage 30 step 1523712: mean cost $76.69 ± 30.81, deaths 0, late 0.00
+
+Training complete. Model saved to models/experiments/curriculum/ppo_evrp_final.zip; learning curve in models/experiments/curriculum/cost_curve.csv

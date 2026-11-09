@@ -1,0 +1,16 @@
+Environment: charge levels=5 (partial), time windows=none, lookahead=4
+Loaded agent from models/experiments/partial_2m/ppo_evrp_1000000_steps.zip (+ models/experiments/partial_2m/ppo_evrp_vecnormalize_1000000_steps.pkl)
+
+========================================================================
+BENCHMARK: 100 episodes, random visit orders on examples/sample_map.json
+========================================================================
+  Method                Avg Cost     Std  $/kWh Stops  Unused Deaths Feasible     Gap  =Opt
+  ----------------------------------------------------------------------------------------------
+  PPO Agent            $   26.51 $ 12.28  0.100  3.72    0.0k      0  100/100  16.80%    13
+  Optimal              $   22.28 $  9.41  0.078  3.47    0.0k      0  100/100   0.00%   100
+  Charge When Forced   $   43.96 $ 24.93  0.230  2.18    0.0k      0  100/100  85.53%     5
+  Greedy Nearest       $   45.70 $ 26.52  0.237  2.20    0.0k      0  100/100  92.87%     5
+  Greedy Cheapest      $   34.01 $ 17.51  0.146  2.17    0.0k      0  100/100  49.25%     8
+  Smart Rule-Based     $   30.61 $ 14.86  0.114  2.68    0.0k      0  100/100  34.71%     5
+  Unused = kWh bought but still in the battery at the end (k = kWh). Gap = mean % above the optimal cost; =Opt = episodes matching it.
+
