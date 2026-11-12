@@ -3,3 +3,7 @@ outputs/
 models/saved_weights/ppo_evrp_*_steps.zip
 models/saved_weights/rl_model_vecnormalize_*.pkl
 models/saved_weights/*_vecnormalize_*_steps.pkl
+models/archive/*/ppo_evrp_*_steps.zip
+models/archive/*/ppo_evrp_vecnormalize_*_steps.pkl
+models/experiments/*/ppo_evrp_*_steps.zip
+models/experiments/*/ppo_evrp_vecnormalize_*_steps.pkl

@@ -1,0 +1,14 @@
+{
+  "map": "examples/sample_map.json",
+  "nc": 10,
+  "ns": 6,
+  "grid": 40.0,
+  "min_visit": 4,
+  "max_visit": 12,
+  "lookahead": 4,
+  "steps": 300000,
+  "envs": 4,
+  "seed": 42,
+  "save_dir": "models/saved_weights",
+  "num_stations": 6
+}

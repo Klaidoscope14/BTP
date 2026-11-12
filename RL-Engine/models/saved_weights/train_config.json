@@ -1,14 +1,67 @@
 {
-  "map": "examples/sample_map.json",
+  "map": "examples/large_map.json",
   "nc": 10,
   "ns": 6,
   "grid": 40.0,
-  "min_visit": 4,
-  "max_visit": 12,
+  "min_visit": 20,
+  "max_visit": 40,
+  "curriculum": "5,15,30",
+  "stage_steps": null,
+  "stage_min_frac": 0.5,
   "lookahead": 4,
-  "steps": 300000,
-  "envs": 4,
+  "charge_levels": [
+    0.0,
+    0.25,
+    0.5,
+    0.75,
+    1.0
+  ],
+  "tw_prob": 0.5,
+  "late_fixed": 5.0,
+  "late_per_hour": 2.0,
+  "steps": 2000000,
+  "envs": 8,
+  "subproc": true,
+  "eval_episodes": 20,
   "seed": 42,
   "save_dir": "models/saved_weights",
-  "num_stations": 6
+  "num_stations": 6,
+  "env_kwargs": {
+    "price_lookahead": 4,
+    "charge_levels": [
+      0.0,
+      0.25,
+      0.5,
+      0.75,
+      1.0
+    ],
+    "late_penalty_fixed": 5.0,
+    "late_penalty_per_hour": 2.0
+  },
+  "stages": [
+    {
+      "name": "stage1_5",
+      "visit_range": [
+        3,
+        5
+      ],
+      "steps": 200000
+    },
+    {
+      "name": "stage2_15",
+      "visit_range": [
+        8,
+        15
+      ],
+      "steps": 600000
+    },
+    {
+      "name": "stage3_30",
+      "visit_range": [
+        15,
+        30
+      ],
+      "steps": 1200000
+    }
+  ]
 }

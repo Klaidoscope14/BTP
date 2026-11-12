@@ -17,7 +17,9 @@ JSON format accepted by load_world / world_from_dict:
 
     {
       "depot":     {"name": "Depot", "x": 0, "y": 0},
-      "customers": [{"name": "C01", "x": 12.5, "y": -3.0}, ...],
+      "customers": [{"name": "C01", "x": 12.5, "y": -3.0,
+                     "window": [8.0, 20.5]}, ...],     # optional time window
+
       "stations":  [{"name": "S1", "x": 20, "y": 5,
                      "prices": [24 hourly $/kWh values]}, ...],
       "visit_order": ["C07", "C02", "C11"],      # names (or 0-based indices)
@@ -25,6 +27,12 @@ JSON format accepted by load_world / world_from_dict:
                                                  #   that have no "prices"
       "params": {"battery_capacity": 100, ...}   # optional, see WORLD_PARAMS
     }
+
+Time windows: "window": [earliest, latest] in hours since 00:00 of day 0
+(the vehicle leaves the depot at params.start_time, 06:00 by default; day 2
+noon is 36.0). Arriving before `earliest` means waiting; arriving after
+`latest` is late (penalised by the env). Customers without a window can be
+served at any time.
 """
 
 from __future__ import annotations
@@ -69,6 +77,8 @@ class World:
     distance_matrix: np.ndarray       # shape (total_nodes, total_nodes)
     price_schedule: np.ndarray        # shape (num_stations, 24)
     all_nodes: List[Node] = field(default_factory=list)
+    # (num_customers, 2) [earliest, latest] per customer, or None (no windows)
+    windows: Optional[np.ndarray] = None
 
     battery_capacity: float = WORLD_PARAMS["battery_capacity"]
     consumption_per_dist: float = WORLD_PARAMS["consumption_per_dist"]
@@ -117,6 +127,17 @@ class World:
     def charge_time(self, energy: float) -> float:
         return energy / self.charge_rate
 
+    @property
+    def has_windows(self) -> bool:
+        return self.windows is not None and bool(np.isfinite(self.windows[:, 1]).any())
+
+    def window(self, customer: int) -> tuple:
+        """(earliest, latest) for a customer index; (0, inf) if it has none."""
+        if self.windows is None:
+            return 0.0, float("inf")
+        e, l = self.windows[customer]
+        return float(e), float(l)
+
     def avg_price(self) -> float:
         return float(self.price_schedule.mean())
 
@@ -146,7 +167,7 @@ class World:
 # ──────────────────────────────────────────────────────────────────────────
 
 def _build_world(depot, customers, stations, visit_order, price_schedule,
-                 params: Optional[dict] = None) -> World:
+                 params: Optional[dict] = None, windows=None) -> World:
     all_nodes = [depot] + customers + stations
     for i, node in enumerate(all_nodes):
         node.index = i
@@ -173,6 +194,7 @@ def _build_world(depot, customers, stations, visit_order, price_schedule,
         price_schedule=price_schedule, all_nodes=all_nodes,
         price_min=min(DEFAULT_PRICE_MIN, float(price_schedule.min())),
         price_max=max(DEFAULT_PRICE_MAX, float(price_schedule.max())),
+        windows=None if windows is None else np.asarray(windows, dtype=np.float64),
         **p,
     )
 
@@ -276,11 +298,21 @@ def world_from_dict(spec: dict, visit_order: Optional[Sequence] = None) -> World
         else:
             prices.append(fallback[i].tolist())
 
+    windows = None
+    if any("window" in c for c in spec["customers"]):
+        windows = []
+        for c, cs in zip(customers, spec["customers"]):
+            e, l = cs.get("window", [0.0, float("inf")])
+            if float(l) < float(e):
+                raise ValueError(f"Customer {c.name}: window ends before it starts")
+            windows.append([float(e), float(l)])
+
     order_spec = visit_order if visit_order is not None else spec.get(
         "visit_order", [c.name for c in customers])
     order = _resolve_order(customers, order_spec)
 
-    w = _build_world(depot, customers, stations, order, prices, spec.get("params"))
+    w = _build_world(depot, customers, stations, order, prices, spec.get("params"),
+                     windows)
     w.validate()
     return w
 
@@ -290,10 +322,23 @@ def load_world(path: str, visit_order: Optional[Sequence] = None) -> World:
         return world_from_dict(json.load(f), visit_order)
 
 
+def with_windows(world: World, windows) -> World:
+    """Same map, new time windows ((num_customers, 2) array, or None)."""
+    return replace(world, windows=None if windows is None
+                   else np.asarray(windows, dtype=np.float64))
+
+
 def world_to_dict(world: World) -> dict:
+    customers = []
+    for i, c in enumerate(world.customers):
+        d = {"name": c.name, "x": c.x, "y": c.y}
+        e, l = world.window(i)
+        if np.isfinite(l):
+            d["window"] = [round(e, 2), round(l, 2)]
+        customers.append(d)
     return {
         "depot": {"name": world.depot.name, "x": world.depot.x, "y": world.depot.y},
-        "customers": [{"name": c.name, "x": c.x, "y": c.y} for c in world.customers],
+        "customers": customers,
         "stations": [{"name": s.name, "x": s.x, "y": s.y,
                       "prices": [round(float(p), 3) for p in world.price_schedule[i]]}
                      for i, s in enumerate(world.stations)],
